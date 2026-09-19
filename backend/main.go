@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -22,7 +21,8 @@ type CreatePollRequest struct {
 }
 
 type VoteRequest struct {
-	Option string `json:"option"`
+	Option      string `json:"option"`
+	OptionIndex *int   `json:"optionIndex"`
 }
 
 type Poll struct {
@@ -99,25 +99,47 @@ func main() {
 	// =========================
 
 	router.Use(func(c *gin.Context) {
+
 		origin := c.GetHeader("Origin")
 
 		allowedOrigins := map[string]bool{
-			"http://localhost:5173": true,
-			"http://127.0.0.1:5173": true,
-			"http://localhost:3000": true,
-			"http://127.0.0.1:3000": true,
+			"http://localhost:5173":     true,
+			"http://127.0.0.1:5173":     true,
+			"http://localhost:3000":     true,
+			"http://127.0.0.1:3000":     true,
+			"https://live-polling-vignesh.vercel.app": true,
 		}
 
 		if origin != "" {
+
 			if allowedOrigins[origin] {
-				c.Header("Access-Control-Allow-Origin", origin)
-			} else if os.Getenv("FRONTEND_URL") != "" && origin == os.Getenv("FRONTEND_URL") {
-				c.Header("Access-Control-Allow-Origin", origin)
+				c.Header(
+					"Access-Control-Allow-Origin",
+					origin,
+				)
+
+			} else if os.Getenv("FRONTEND_URL") != "" &&
+				origin == os.Getenv("FRONTEND_URL") {
+
+				c.Header(
+					"Access-Control-Allow-Origin",
+					origin,
+				)
+
 			} else {
-				c.Header("Access-Control-Allow-Origin", "*")
+
+				c.Header(
+					"Access-Control-Allow-Origin",
+					"*",
+				)
 			}
+
 		} else {
-			c.Header("Access-Control-Allow-Origin", "*")
+
+			c.Header(
+				"Access-Control-Allow-Origin",
+				"*",
+			)
 		}
 
 		c.Header(
@@ -162,9 +184,12 @@ func main() {
 
 		if err != nil {
 
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Failed to fetch polls",
-			})
+			c.JSON(
+				http.StatusInternalServerError,
+				gin.H{
+					"error": "Failed to fetch polls",
+				},
+			)
 
 			return
 		}
@@ -180,19 +205,24 @@ func main() {
 
 		if err != nil {
 
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Failed to read polls",
-			})
+			c.JSON(
+				http.StatusInternalServerError,
+				gin.H{
+					"error": "Failed to read polls",
+				},
+			)
 
 			return
 		}
 
-		// If no polls exist, return an empty array instead of null
 		if polls == nil {
 			polls = []Poll{}
 		}
 
-		c.JSON(http.StatusOK, polls)
+		c.JSON(
+			http.StatusOK,
+			polls,
+		)
 	})
 
 	// =========================
@@ -207,21 +237,28 @@ func main() {
 
 		if err != nil {
 
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Invalid request",
-			})
+			c.JSON(
+				http.StatusBadRequest,
+				gin.H{
+					"error": "Invalid request",
+				},
+			)
 
 			return
 		}
 
-		// Clean question
-		req.Question = strings.TrimSpace(req.Question)
+		req.Question = strings.TrimSpace(
+			req.Question,
+		)
 
 		if req.Question == "" {
 
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Question is required",
-			})
+			c.JSON(
+				http.StatusBadRequest,
+				gin.H{
+					"error": "Question is required",
+				},
+			)
 
 			return
 		}
@@ -237,39 +274,56 @@ func main() {
 			option = strings.TrimSpace(option)
 
 			if option != "" {
-				cleanOptions = append(cleanOptions, option)
+				cleanOptions = append(
+					cleanOptions,
+					option,
+				)
 			}
 		}
 
 		if len(cleanOptions) < 2 {
 
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "At least 2 options are required",
-			})
+			c.JSON(
+				http.StatusBadRequest,
+				gin.H{
+					"error": "At least 2 options are required",
+				},
+			)
 
 			return
 		}
 
 		// =========================
-		// REMOVE DUPLICATE OPTIONS
+		// REMOVE DUPLICATES
 		// =========================
 
 		uniqueOptions := make([]string, 0)
-		seenOptions := make(map[string]bool)
+
+		seenOptions := make(
+			map[string]bool,
+		)
 
 		for _, option := range cleanOptions {
 
 			if !seenOptions[option] {
+
 				seenOptions[option] = true
-				uniqueOptions = append(uniqueOptions, option)
+
+				uniqueOptions = append(
+					uniqueOptions,
+					option,
+				)
 			}
 		}
 
 		if len(uniqueOptions) < 2 {
 
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "At least 2 different options are required",
-			})
+			c.JSON(
+				http.StatusBadRequest,
+				gin.H{
+					"error": "At least 2 different options are required",
+				},
+			)
 
 			return
 		}
@@ -278,7 +332,9 @@ func main() {
 		// CREATE VOTE MAP
 		// =========================
 
-		votes := make(map[string]int)
+		votes := make(
+			map[string]int,
+		)
 
 		for _, option := range uniqueOptions {
 			votes[option] = 0
@@ -289,9 +345,9 @@ func main() {
 		// =========================
 
 		poll := Poll{
-			Question:  req.Question,
-			Options:   uniqueOptions,
-			Votes:     votes,
+			Question: req.Question,
+			Options: uniqueOptions,
+			Votes: votes,
 			CreatedAt: time.Now(),
 		}
 
@@ -306,262 +362,382 @@ func main() {
 
 		if err != nil {
 
-			fmt.Println("Insert error:", err)
+			fmt.Println(
+				"Insert error:",
+				err,
+			)
 
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Failed to create poll",
-			})
+			c.JSON(
+				http.StatusInternalServerError,
+				gin.H{
+					"error": "Failed to create poll",
+				},
+			)
 
 			return
 		}
 
-		c.JSON(http.StatusCreated, gin.H{
-			"message": "Poll created successfully",
-			"id":      result.InsertedID,
-		})
+		c.JSON(
+			http.StatusCreated,
+			gin.H{
+				"message": "Poll created successfully",
+				"id":      result.InsertedID,
+			},
+		)
 	})
 
 	// =========================
 	// VOTE
 	// =========================
 
-	router.POST("/polls/:id/vote", func(c *gin.Context) {
+	router.POST(
+		"/polls/:id/vote",
+		func(c *gin.Context) {
 
-		pollID := c.Param("id")
+			pollID := c.Param("id")
 
-		var req VoteRequest
+			var req VoteRequest
 
-		err := c.ShouldBindJSON(&req)
+			err := c.ShouldBindJSON(&req)
 
-		if err != nil {
+			if err != nil {
 
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Invalid request",
-			})
-
-			return
-		}
-
-		req.Option = strings.TrimSpace(req.Option)
-
-		if req.Option == "" {
-
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Option is required",
-			})
-
-			return
-		}
-
-		// =========================
-		// CONVERT ID
-		// =========================
-
-		objectID, err := bson.ObjectIDFromHex(pollID)
-
-		if err != nil {
-
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Invalid poll ID",
-			})
-
-			return
-		}
-
-		// =========================
-		// CHECK POLL + OPTION
-		// =========================
-
-		var poll Poll
-
-		err = collection.FindOne(
-			c.Request.Context(),
-			bson.M{
-				"_id": objectID,
-			},
-		).Decode(&poll)
-
-		if err != nil {
-
-			if err == mongo.ErrNoDocuments {
-
-				c.JSON(http.StatusNotFound, gin.H{
-					"error": "Poll not found",
-				})
+				c.JSON(
+					http.StatusBadRequest,
+					gin.H{
+						"error": "Invalid request",
+					},
+				)
 
 				return
 			}
 
-			fmt.Println("Find poll error:", err)
+			// =========================
+			// CONVERT ID
+			// =========================
 
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Failed to find poll",
-			})
+			objectID, err :=
+				bson.ObjectIDFromHex(pollID)
 
-			return
-		}
+			if err != nil {
 
-		// =========================
-		// CHECK OPTION EXISTS
-		// =========================
+				c.JSON(
+					http.StatusBadRequest,
+					gin.H{
+						"error": "Invalid poll ID",
+					},
+				)
 
-		optionExists := false
-
-		for _, option := range poll.Options {
-
-			if option == req.Option {
-				optionExists = true
-				break
+				return
 			}
-		}
 
-		if !optionExists {
+			// =========================
+			// FIND POLL
+			// =========================
 
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Selected option does not exist",
-			})
+			var poll Poll
 
-			return
-		}
+			err = collection.FindOne(
+				c.Request.Context(),
+				bson.M{
+					"_id": objectID,
+				},
+			).Decode(&poll)
 
-		// =========================
-		// INCREMENT VOTE
-		// =========================
+			if err != nil {
 
-		voteField := "votes." + req.Option
+				if err == mongo.ErrNoDocuments {
 
-		update := bson.M{
-			"$inc": bson.M{
-				voteField: 1,
-			},
-		}
+					c.JSON(
+						http.StatusNotFound,
+						gin.H{
+							"error": "Poll not found",
+						},
+					)
 
-		result, err := collection.UpdateOne(
-			c.Request.Context(),
-			bson.M{
-				"_id": objectID,
-			},
-			update,
-		)
+					return
+				}
 
-		if err != nil {
+				fmt.Println(
+					"Find poll error:",
+					err,
+				)
 
-			fmt.Println("Vote update error:", err)
+				c.JSON(
+					http.StatusInternalServerError,
+					gin.H{
+						"error": "Failed to find poll",
+					},
+				)
 
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Failed to save vote",
-			})
+				return
+			}
 
-			return
-		}
+			// =========================
+			// GET OPTION NAME
+			// =========================
 
-		if result.ModifiedCount == 0 {
+			selectedOption := strings.TrimSpace(
+				req.Option,
+			)
 
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Vote was not updated",
-			})
+			// Frontend sends optionIndex.
+			// Convert index -> option name.
 
-			return
-		}
+			if selectedOption == "" &&
+				req.OptionIndex != nil {
 
-		// =========================
-		// GET UPDATED POLL
-		// =========================
+				index := *req.OptionIndex
 
-		var updatedPoll Poll
+				if index < 0 ||
+					index >= len(poll.Options) {
 
-		err = collection.FindOne(
-			c.Request.Context(),
-			bson.M{
-				"_id": objectID,
-			},
-		).Decode(&updatedPoll)
+					c.JSON(
+						http.StatusBadRequest,
+						gin.H{
+							"error": "Invalid option index",
+						},
+					)
 
-		if err != nil {
+					return
+				}
 
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Vote saved but failed to load updated poll",
-			})
+				selectedOption =
+					poll.Options[index]
+			}
 
-			return
-		}
+			// =========================
+			// CHECK OPTION
+			// =========================
 
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Vote recorded successfully!",
-			"option":  req.Option,
-			"votes":   updatedPoll.Votes,
-		})
-	})
+			if selectedOption == "" {
+
+				c.JSON(
+					http.StatusBadRequest,
+					gin.H{
+						"error": "Option is required",
+					},
+				)
+
+				return
+			}
+
+			optionExists := false
+
+			for _, option := range poll.Options {
+
+				if option == selectedOption {
+
+					optionExists = true
+					break
+				}
+			}
+
+			if !optionExists {
+
+				c.JSON(
+					http.StatusBadRequest,
+					gin.H{
+						"error": "Selected option does not exist",
+					},
+				)
+
+				return
+			}
+
+			// =========================
+			// INCREMENT VOTE
+			// =========================
+
+			voteField :=
+				"votes." + selectedOption
+
+			update := bson.M{
+				"$inc": bson.M{
+					voteField: 1,
+				},
+			}
+
+			result, err := collection.UpdateOne(
+				c.Request.Context(),
+				bson.M{
+					"_id": objectID,
+				},
+				update,
+			)
+
+			if err != nil {
+
+				fmt.Println(
+					"Vote update error:",
+					err,
+				)
+
+				c.JSON(
+					http.StatusInternalServerError,
+					gin.H{
+						"error": "Failed to save vote",
+					},
+				)
+
+				return
+			}
+
+			if result.ModifiedCount == 0 {
+
+				c.JSON(
+					http.StatusInternalServerError,
+					gin.H{
+						"error": "Vote was not updated",
+					},
+				)
+
+				return
+			}
+
+			// =========================
+			// GET UPDATED POLL
+			// =========================
+
+			var updatedPoll Poll
+
+			err = collection.FindOne(
+				c.Request.Context(),
+				bson.M{
+					"_id": objectID,
+				},
+			).Decode(&updatedPoll)
+
+			if err != nil {
+
+				c.JSON(
+					http.StatusInternalServerError,
+					gin.H{
+						"error": "Vote saved but failed to load updated poll",
+					},
+				)
+
+				return
+			}
+
+			// =========================
+			// SUCCESS
+			// =========================
+
+			c.JSON(
+				http.StatusOK,
+				gin.H{
+					"message": "Vote recorded successfully!",
+					"option": selectedOption,
+					"votes": updatedPoll.Votes,
+				},
+			)
+		},
+	)
 
 	// =========================
 	// DELETE POLL
 	// =========================
 
-	router.DELETE("/polls/:id", func(c *gin.Context) {
+	router.DELETE(
+		"/polls/:id",
+		func(c *gin.Context) {
 
-		pollID := c.Param("id")
+			pollID := c.Param("id")
 
-		objectID, err := bson.ObjectIDFromHex(pollID)
+			objectID, err :=
+				bson.ObjectIDFromHex(pollID)
 
-		if err != nil {
+			if err != nil {
 
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Invalid poll ID",
-			})
+				c.JSON(
+					http.StatusBadRequest,
+					gin.H{
+						"error": "Invalid poll ID",
+					},
+				)
 
-			return
-		}
+				return
+			}
 
-		result, err := collection.DeleteOne(
-			c.Request.Context(),
-			bson.M{
-				"_id": objectID,
-			},
-		)
+			result, err := collection.DeleteOne(
+				c.Request.Context(),
+				bson.M{
+					"_id": objectID,
+				},
+			)
 
-		if err != nil {
+			if err != nil {
 
-			fmt.Println("Delete poll error:", err)
+				fmt.Println(
+					"Delete poll error:",
+					err,
+				)
 
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Failed to delete poll",
-			})
+				c.JSON(
+					http.StatusInternalServerError,
+					gin.H{
+						"error": "Failed to delete poll",
+					},
+				)
 
-			return
-		}
+				return
+			}
 
-		if result.DeletedCount == 0 {
+			if result.DeletedCount == 0 {
 
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "Poll not found",
-			})
+				c.JSON(
+					http.StatusNotFound,
+					gin.H{
+						"error": "Poll not found",
+					},
+				)
 
-			return
-		}
+				return
+			}
 
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Poll deleted successfully",
-		})
-	})
+			c.JSON(
+				http.StatusOK,
+				gin.H{
+					"message": "Poll deleted successfully",
+				},
+			)
+		},
+	)
 
 	// =========================
 	// START SERVER
 	// =========================
 
 	port := os.Getenv("PORT")
+
 	if port == "" {
 		port = "8080"
 	}
 
-	fmt.Println("===================================")
-	fmt.Println("Live Polling API")
-	fmt.Println("Server: http://localhost:" + port)
-	fmt.Println("===================================")
+	fmt.Println(
+		"===================================",
+	)
+
+	fmt.Println(
+		"Live Polling API",
+	)
+
+	fmt.Println(
+		"Server running on port:",
+		port,
+	)
+
+	fmt.Println(
+		"===================================",
+	)
 
 	err = router.Run(":" + port)
 
 	if err != nil {
-		fmt.Println("Server error:", err)
+		fmt.Println(
+			"Server error:",
+			err,
+		)
 	}
 }
-
