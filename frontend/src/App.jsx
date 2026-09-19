@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
+
 const API_BASE_URL = "https://live-polling-tool-e1eb.onrender.com";
 
 function App() {
@@ -17,14 +18,11 @@ function App() {
   const [showCreatePoll, setShowCreatePoll] = useState(false);
 
   // =========================
-  // GET ALL POLLS
+  // FETCH POLLS
   // =========================
   const fetchPolls = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/polls`, {
-        method: "GET",
-        cache: "no-store",
-      });
+      const response = await fetch(`${API_BASE_URL}/polls`);
 
       if (!response.ok) {
         throw new Error("Failed to fetch polls");
@@ -32,21 +30,18 @@ function App() {
 
       const data = await response.json();
 
-      if (Array.isArray(data)) {
-        setPolls(data);
-      } else {
-        setPolls([]);
-      }
+      setPolls(Array.isArray(data) ? data : []);
+      setErrorMessage("");
     } catch (error) {
       console.error("Fetch polls error:", error);
-      setErrorMessage("Unable to load polls.");
+      setErrorMessage("Failed to fetch polls. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   // =========================
-  // INITIAL LOAD + LIVE REFRESH
+  // AUTO REFRESH
   // =========================
   useEffect(() => {
     fetchPolls();
@@ -59,28 +54,42 @@ function App() {
   }, []);
 
   // =========================
-  // OPTION HANDLERS
+  // UPDATE OPTION
   // =========================
   const updateOption = (index, value) => {
-    setOptions((current) =>
-      current.map((option, optionIndex) =>
-        optionIndex === index ? value : option
-      )
-    );
+    const updatedOptions = [...options];
+    updatedOptions[index] = value;
+    setOptions(updatedOptions);
   };
 
+  // =========================
+  // ADD OPTION
+  // =========================
   const addOption = () => {
-    setOptions((current) => [...current, ""]);
-  };
-
-  const removeOption = (index) => {
-    if (options.length <= 2) {
+    if (options.length >= 6) {
+      setErrorMessage("Maximum 6 options allowed.");
       return;
     }
 
-    setOptions((current) =>
-      current.filter((_, optionIndex) => optionIndex !== index)
+    setOptions([...options, ""]);
+    setErrorMessage("");
+  };
+
+  // =========================
+  // REMOVE OPTION
+  // =========================
+  const removeOption = (index) => {
+    if (options.length <= 2) {
+      setErrorMessage("At least 2 options are required.");
+      return;
+    }
+
+    const updatedOptions = options.filter(
+      (_, optionIndex) => optionIndex !== index
     );
+
+    setOptions(updatedOptions);
+    setErrorMessage("");
   };
 
   // =========================
@@ -99,7 +108,7 @@ function App() {
       .filter((option) => option !== "");
 
     if (!cleanQuestion) {
-      setErrorMessage("Please enter a question.");
+      setErrorMessage("Please enter a poll question.");
       return;
     }
 
@@ -108,9 +117,18 @@ function App() {
       return;
     }
 
-    setIsSubmittingPoll(true);
+    const uniqueOptions = [
+      ...new Set(cleanOptions.map((option) => option.toLowerCase())),
+    ];
+
+    if (uniqueOptions.length !== cleanOptions.length) {
+      setErrorMessage("Options must be unique.");
+      return;
+    }
 
     try {
+      setIsSubmittingPoll(true);
+
       const response = await fetch(`${API_BASE_URL}/polls`, {
         method: "POST",
         headers: {
@@ -124,36 +142,50 @@ function App() {
 
       const responseText = await response.text();
 
-      console.log("Create poll status:", response.status);
-      console.log("Create poll response:", responseText);
+      let data = {};
+
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        data = {};
+      }
 
       if (!response.ok) {
-        throw new Error(
-          responseText || "Failed to create poll"
-        );
+        throw new Error(data.error || "Failed to create poll");
       }
 
       setQuestion("");
       setOptions(["", ""]);
       setShowCreatePoll(false);
 
-      setStatusMessage("Poll created successfully.");
+      setStatusMessage("Poll created successfully!");
 
       await fetchPolls();
     } catch (error) {
       console.error("Create poll error:", error);
-      setErrorMessage(
-        error.message || "Failed to create poll."
-      );
+      setErrorMessage(error.message || "Failed to create poll.");
     } finally {
       setIsSubmittingPoll(false);
     }
   };
 
   // =========================
+  // SELECT OPTION
+  // =========================
+  const handleOptionSelect = (pollId, optionIndex) => {
+    setSelectedOptions((previous) => ({
+      ...previous,
+      [pollId]: optionIndex,
+    }));
+  };
+
+  // =========================
   // VOTE
   // =========================
   const handleVote = async (pollId) => {
+    setStatusMessage("");
+    setErrorMessage("");
+
     const selectedOption = selectedOptions[pollId];
 
     if (
@@ -165,21 +197,11 @@ function App() {
       return;
     }
 
-    setStatusMessage("");
-    setErrorMessage("");
-
-    setVotingPolls((current) => ({
-      ...current,
-      [pollId]: true,
-    }));
-
     try {
-      console.log("Voting poll ID:", pollId);
-      console.log(
-        "Selected option index:",
-        Number(selectedOption)
-      );
-      console.log("API URL:", API_BASE_URL);
+      setVotingPolls((previous) => ({
+        ...previous,
+        [pollId]: true,
+      }));
 
       const response = await fetch(
         `${API_BASE_URL}/polls/${pollId}/vote`,
@@ -194,105 +216,77 @@ function App() {
         }
       );
 
-      // IMPORTANT:
-      // Don't use response.json() here.
-      // Backend may return empty response.
       const responseText = await response.text();
 
-      console.log("Vote status:", response.status);
-      console.log("Vote response:", responseText);
+      let data = {};
 
-      if (!response.ok) {
-        throw new Error(
-          responseText || "Failed to submit vote"
-        );
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        data = {};
       }
 
-      setStatusMessage("Vote submitted successfully.");
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to submit vote");
+      }
 
-      // Refresh latest vote counts
+      setStatusMessage("Vote submitted successfully!");
+
       await fetchPolls();
-
-      // Clear selected option
-      setSelectedOptions((current) => {
-        const updated = { ...current };
-        delete updated[pollId];
-        return updated;
-      });
     } catch (error) {
       console.error("Vote error:", error);
-
-      setErrorMessage(
-        error.message || "Failed to submit vote."
-      );
+      setErrorMessage(error.message || "Failed to submit vote.");
     } finally {
-      setVotingPolls((current) => ({
-        ...current,
+      setVotingPolls((previous) => ({
+        ...previous,
         [pollId]: false,
       }));
     }
   };
 
   // =========================
-  // SELECT OPTION
+  // GET OPTION VOTE COUNT
   // =========================
-  const handleOptionSelect = (pollId, optionIndex) => {
-    setSelectedOptions((current) => ({
-      ...current,
-      [pollId]: optionIndex,
-    }));
-
-    setStatusMessage("");
-    setErrorMessage("");
-  };
-
-  // =========================
-  // COPY SHARE LINK
-  // =========================
-  const copyShareLink = async (pollId) => {
-    const shareUrl = `${window.location.origin}?poll=${pollId}`;
-
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-
-      setStatusMessage("Poll link copied.");
-      setErrorMessage("");
-    } catch (error) {
-      console.error("Copy link error:", error);
-
-      setErrorMessage("Unable to copy poll link.");
+  const getOptionVoteCount = (poll, index) => {
+    if (!poll?.votes) {
+      return 0;
     }
+
+    if (Array.isArray(poll.votes)) {
+      return Number(poll.votes[index] || 0);
+    }
+
+    if (typeof poll.votes === "object") {
+      const optionName = poll.options?.[index];
+
+      return Number(
+        poll.votes[optionName] ??
+          poll.votes[String(index)] ??
+          0
+      );
+    }
+
+    return 0;
   };
 
   // =========================
   // TOTAL VOTES
   // =========================
-  const getOptionVoteCount = (poll, optionIndex) => {
-    if (!poll || !Array.isArray(poll.options)) {
-      return 0;
-    }
-
-    if (!poll.votes || typeof poll.votes !== "object") {
-      return 0;
-    }
-
-    const optionName = String(
-      poll.options[optionIndex] ?? ""
-    ).trim();
-
-    const count = poll.votes[optionName];
-
-    return Number(count ?? 0);
-  };
-
   const getTotalVotes = (poll) => {
-    if (!poll || !poll.votes) {
+    if (!poll) {
       return 0;
     }
 
-    if (typeof poll.votes === "object") {
+    if (Array.isArray(poll.votes)) {
+      return poll.votes.reduce(
+        (total, vote) => total + Number(vote || 0),
+        0
+      );
+    }
+
+    if (typeof poll.votes === "object" && poll.votes !== null) {
       return Object.values(poll.votes).reduce(
-        (total, value) => total + Number(value || 0),
+        (total, vote) => total + Number(vote || 0),
         0
       );
     }
@@ -300,6 +294,25 @@ function App() {
     return 0;
   };
 
+  // =========================
+  // VOTE PERCENTAGE
+  // =========================
+  const getVotePercentage = (poll, index) => {
+    const totalVotesForPoll = getTotalVotes(poll);
+    const voteCount = getOptionVoteCount(poll, index);
+
+    if (totalVotesForPoll === 0) {
+      return 0;
+    }
+
+    return Math.round(
+      (voteCount / totalVotesForPoll) * 100
+    );
+  };
+
+  // =========================
+  // TOTAL VOTES - ALL POLLS
+  // =========================
   const totalVotes = useMemo(() => {
     return polls.reduce(
       (total, poll) => total + getTotalVotes(poll),
@@ -307,15 +320,17 @@ function App() {
     );
   }, [polls]);
 
-  // =========================
-  // RENDER
-  // =========================
   return (
     <div className="app">
+
+      {/* ================= HEADER ================= */}
       <header className="header">
         <div>
           <h1>Live Polling</h1>
-          <p>Create polls, share them and watch votes update live.</p>
+
+          <p>
+            Create polls, collect votes and watch results update live.
+          </p>
         </div>
 
         <button
@@ -330,82 +345,113 @@ function App() {
         </button>
       </header>
 
-      {/* STATUS */}
+      {/* ================= MESSAGES ================= */}
       {statusMessage && (
         <div className="success-message">
-          {statusMessage}
+          ✓ {statusMessage}
         </div>
       )}
 
       {errorMessage && (
         <div className="error-message">
-          {errorMessage}
+          ⚠ {errorMessage}
         </div>
       )}
 
-      {/* CREATE POLL */}
+      {/* ================= CREATE POLL ================= */}
       {showCreatePoll ? (
         <section className="create-poll">
+
           <div className="section-header">
             <div>
-              <h2>Create a New Poll</h2>
-              <p>Ask a question and add multiple choices.</p>
+              <h2>Create a new poll</h2>
+
+              <p>
+                Ask a question and add at least two options.
+              </p>
             </div>
           </div>
 
           <form onSubmit={handleCreatePoll}>
-            <label>Question</label>
 
-            <input
-              type="text"
-              value={question}
-              onChange={(event) =>
-                setQuestion(event.target.value)
-              }
-              placeholder="Enter your question"
-            />
+            <div className="form-group">
 
-            <label>Options</label>
+              <label>Question</label>
 
-            <div className="options-container">
-              {options.map((option, index) => (
-                <div className="option-row" key={index}>
-                  <input
-                    type="text"
-                    value={option}
-                    onChange={(event) =>
-                      updateOption(
-                        index,
-                        event.target.value
-                      )
-                    }
-                    placeholder={`Option ${index + 1}`}
-                  />
+              <input
+                type="text"
+                value={question}
+                onChange={(event) =>
+                  setQuestion(event.target.value)
+                }
+                placeholder="What is your favourite programming language?"
+                maxLength={200}
+              />
 
-                  {options.length > 2 && (
-                    <button
-                      type="button"
-                      className="remove-option"
-                      onClick={() =>
-                        removeOption(index)
-                      }
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              ))}
             </div>
 
-            <button
-              type="button"
-              className="add-option"
-              onClick={addOption}
-            >
-              + Add Option
-            </button>
+            <div className="form-group">
+
+              <div className="options-header">
+
+                <label>Options</label>
+
+                <span>
+                  {options.length}/6
+                </span>
+
+              </div>
+
+              <div className="options-container">
+
+                {options.map((option, index) => (
+                  <div
+                    className="option-row"
+                    key={index}
+                  >
+
+                    <input
+                      type="text"
+                      value={option}
+                      onChange={(event) =>
+                        updateOption(
+                          index,
+                          event.target.value
+                        )
+                      }
+                      placeholder={`Option ${index + 1}`}
+                      maxLength={100}
+                    />
+
+                    {options.length > 2 && (
+                      <button
+                        type="button"
+                        className="remove-option"
+                        onClick={() =>
+                          removeOption(index)
+                        }
+                      >
+                        ×
+                      </button>
+                    )}
+
+                  </div>
+                ))}
+
+              </div>
+
+              <button
+                type="button"
+                className="add-option"
+                onClick={addOption}
+              >
+                + Add option
+              </button>
+
+            </div>
 
             <div className="form-actions">
+
               <button
                 type="button"
                 className="cancel-button"
@@ -413,6 +459,7 @@ function App() {
                   setShowCreatePoll(false);
                   setQuestion("");
                   setOptions(["", ""]);
+                  setErrorMessage("");
                 }}
               >
                 Cancel
@@ -427,22 +474,29 @@ function App() {
                   ? "Creating..."
                   : "Create Poll"}
               </button>
+
             </div>
+
           </form>
+
         </section>
       ) : (
         <section className="create-poll-closed">
-          <div className="create-icon">＋</div>
 
-          <h3>Create your own poll</h3>
+          <div className="create-icon">
+            ＋
+          </div>
 
-          <p>
-            Ask a question, collect votes and see the
-            results update in real time.
-          </p>
+          <div>
+            <h2>Create a poll</h2>
+
+            <p>
+              Start a new live poll and collect responses.
+            </p>
+          </div>
 
           <button
-            className="create-button open-create-button"
+            className="open-create-button"
             onClick={() => {
               setShowCreatePoll(true);
               setStatusMessage("");
@@ -451,170 +505,241 @@ function App() {
           >
             Create Poll
           </button>
+
         </section>
       )}
 
-      {/* STATS */}
+      {/* ================= STATS ================= */}
       <section className="stats">
+
         <div className="stat-card">
-          <span>Total Polls</span>
-          <strong>{polls.length}</strong>
+
+          <span className="stat-label">
+            Total Polls
+          </span>
+
+          <strong>
+            {polls.length}
+          </strong>
+
         </div>
 
         <div className="stat-card">
-          <span>Total Votes</span>
-          <strong>{totalVotes}</strong>
+
+          <span className="stat-label">
+            Total Votes
+          </span>
+
+          <strong>
+            {totalVotes}
+          </strong>
+
         </div>
 
         <div className="stat-card">
-          <span>Status</span>
+
+          <span className="stat-label">
+            Status
+          </span>
+
           <strong className="live-status">
             ● Live
           </strong>
+
         </div>
+
       </section>
 
-      {/* POLLS */}
+      {/* ================= ACTIVE POLLS ================= */}
       <section className="poll-section">
-        <div className="section-title">
+
+        <div className="section-header">
+
           <div>
-            <h2>Active Polls</h2>
-            <p>Vote and watch the results update automatically.</p>
+
+            <h2 className="section-title">
+              Active Polls
+            </h2>
+
+            <p>
+              Vote and watch the results update automatically.
+            </p>
+
           </div>
 
           <span className="refresh-label">
             Auto refresh: 4s
           </span>
+
         </div>
 
         {loading ? (
+
           <div className="empty-state">
-            Loading polls...
+
+            <h3>
+              Loading polls...
+            </h3>
+
+            <p>
+              Please wait while we fetch the latest polls.
+            </p>
+
           </div>
+
         ) : polls.length === 0 ? (
+
           <div className="empty-state">
-            <h3>No polls yet</h3>
-            <p>Create your first poll to get started.</p>
+
+            <h3>
+              No polls available
+            </h3>
+
+            <p>
+              Create your first poll to get started.
+            </p>
+
           </div>
+
         ) : (
+
           <div className="poll-list">
+
             {polls.map((poll, pollIndex) => {
-              const pollId = String(
-                poll._id || poll.id || pollIndex
-              );
+
+              const totalVotesForPoll =
+                getTotalVotes(poll);
+
+              const isVoting =
+                votingPolls[poll._id];
 
               return (
+
                 <article
                   className="poll-card"
-                  key={pollId}
+                  key={poll._id}
                 >
-                  <div className="poll-card-header">
-                    <div>
-                      <span className="poll-number">
-                        Poll #{pollIndex + 1}
-                      </span>
 
-                      <h3>{poll.question}</h3>
-                    </div>
+                  {/* Poll Header */}
+                  <div className="poll-card-header">
+
+                    <span className="poll-number">
+                      Poll #{pollIndex + 1}
+                    </span>
 
                     <span className="live-badge">
                       ● LIVE
                     </span>
+
                   </div>
 
+                  {/* Question */}
+                  <h3>
+                    {poll.question}
+                  </h3>
+
+                  {/* Options */}
                   <div className="poll-options">
-                    {Array.isArray(poll.options) &&
-                      poll.options.map(
-                        (option, optionIndex) => {
-                          const voteCount =
-                            getOptionVoteCount(
-                              poll,
-                              optionIndex
-                            );
 
-                          const isSelected =
-                            String(
-                              selectedOptions[pollId]
-                            ) ===
-                            String(optionIndex);
+                    {poll.options?.map(
+                      (option, optionIndex) => {
 
-                          return (
-                            <label
-                              className={`poll-option ${
-                                isSelected
-                                  ? "selected"
-                                  : ""
-                              }`}
-                              key={optionIndex}
-                            >
-                              <input
-                                type="radio"
-                                name={`poll-${pollId}`}
-                                value={optionIndex}
-                                checked={isSelected}
-                                onChange={() =>
-                                  handleOptionSelect(
-                                    pollId,
-                                    optionIndex
-                                  )
-                                }
-                              />
-
-                              <span className="option-text">
-                                {option}
-                              </span>
-
-                              <span className="vote-count">
-                                {voteCount} vote
-                                {voteCount === 1
-                                  ? ""
-                                  : "s"}
-                              </span>
-                            </label>
+                        const voteCount =
+                          getOptionVoteCount(
+                            poll,
+                            optionIndex
                           );
-                        }
-                      )}
+
+                        const percentage =
+                          getVotePercentage(
+                            poll,
+                            optionIndex
+                          );
+
+                        const isSelected =
+                          Number(
+                            selectedOptions[poll._id]
+                          ) === optionIndex;
+
+                        return (
+
+                          <label
+                            className={`poll-option ${
+                              isSelected
+                                ? "selected"
+                                : ""
+                            }`}
+                            key={optionIndex}
+                          >
+
+                            <input
+                              type="radio"
+                              name={`poll-${poll._id}`}
+                              value={optionIndex}
+                              checked={isSelected}
+                              onChange={() =>
+                                handleOptionSelect(
+                                  poll._id,
+                                  optionIndex
+                                )
+                              }
+                            />
+
+                            <span className="option-text">
+                              {option}
+                            </span>
+
+                            <span className="vote-count">
+                              {voteCount} votes · {percentage}%
+                            </span>
+
+                          </label>
+
+                        );
+                      }
+                    )}
+
                   </div>
 
+                  {/* Footer */}
                   <div className="poll-footer">
+
                     <span>
                       Total votes:{" "}
                       <strong>
-                        {getTotalVotes(poll)}
+                        {totalVotesForPoll}
                       </strong>
                     </span>
 
                     <div className="poll-actions">
-                      <button
-                        className="share-button"
-                        onClick={() =>
-                          copyShareLink(pollId)
-                        }
-                      >
-                        Share
-                      </button>
 
                       <button
                         className="vote-button"
                         onClick={() =>
-                          handleVote(pollId)
+                          handleVote(poll._id)
                         }
-                        disabled={Boolean(
-                          votingPolls[pollId]
-                        )}
+                        disabled={isVoting}
                       >
-                        {votingPolls[pollId]
+                        {isVoting
                           ? "Voting..."
                           : "Vote"}
                       </button>
+
                     </div>
+
                   </div>
+
                 </article>
+
               );
             })}
+
           </div>
+
         )}
+
       </section>
+
     </div>
   );
 }
