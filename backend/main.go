@@ -99,11 +99,26 @@ func main() {
 	// =========================
 
 	router.Use(func(c *gin.Context) {
+		origin := c.GetHeader("Origin")
 
-		c.Header(
-			"Access-Control-Allow-Origin",
-			"http://localhost:5173",
-		)
+		allowedOrigins := map[string]bool{
+			"http://localhost:5173": true,
+			"http://127.0.0.1:5173": true,
+			"http://localhost:3000": true,
+			"http://127.0.0.1:3000": true,
+		}
+
+		if origin != "" {
+			if allowedOrigins[origin] {
+				c.Header("Access-Control-Allow-Origin", origin)
+			} else if os.Getenv("FRONTEND_URL") != "" && origin == os.Getenv("FRONTEND_URL") {
+				c.Header("Access-Control-Allow-Origin", origin)
+			} else {
+				c.Header("Access-Control-Allow-Origin", "*")
+			}
+		} else {
+			c.Header("Access-Control-Allow-Origin", "*")
+		}
 
 		c.Header(
 			"Access-Control-Allow-Methods",
@@ -112,7 +127,7 @@ func main() {
 
 		c.Header(
 			"Access-Control-Allow-Headers",
-			"Content-Type",
+			"Content-Type, Authorization",
 		)
 
 		if c.Request.Method == "OPTIONS" {
@@ -533,12 +548,17 @@ func main() {
 	// START SERVER
 	// =========================
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	fmt.Println("===================================")
 	fmt.Println("Live Polling API")
-	fmt.Println("Server: http://localhost:8080")
+	fmt.Println("Server: http://localhost:" + port)
 	fmt.Println("===================================")
 
-	err = router.Run(":8080")
+	err = router.Run(":" + port)
 
 	if err != nil {
 		fmt.Println("Server error:", err)
