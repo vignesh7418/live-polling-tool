@@ -57,6 +57,10 @@ function App() {
     }
   };
 
+  // ===============================
+  // INITIAL LOAD + AUTO REFRESH
+  // ===============================
+
   useEffect(() => {
     fetchPolls();
 
@@ -238,9 +242,7 @@ function App() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            optionIndex: Number(
-              selectedOption
-            ),
+            optionIndex: Number(selectedOption),
             voterId: getVoterId(),
           }),
         }
@@ -372,7 +374,7 @@ function App() {
   };
 
   // ===============================
-  // TOTAL POLLS + VOTES
+  // TOTAL VOTES
   // ===============================
 
   const totalVotes = useMemo(() => {
@@ -402,7 +404,7 @@ function App() {
       </header>
 
       {/* ===============================
-          MESSAGES
+          SUCCESS MESSAGE
       =============================== */}
 
       {statusMessage && (
@@ -410,6 +412,10 @@ function App() {
           {statusMessage}
         </div>
       )}
+
+      {/* ===============================
+          ERROR MESSAGE
+      =============================== */}
 
       {errorMessage && (
         <div className="error-message">
@@ -476,6 +482,7 @@ function App() {
                       className="option-row"
                       key={index}
                     >
+
                       <input
                         type="text"
                         value={option}
@@ -490,8 +497,7 @@ function App() {
                         }`}
                       />
 
-                      {options.length >
-                        2 && (
+                      {options.length > 2 && (
                         <button
                           type="button"
                           className="remove-option"
@@ -504,6 +510,7 @@ function App() {
                           ×
                         </button>
                       )}
+
                     </div>
                   )
                 )}
@@ -526,14 +533,10 @@ function App() {
                 type="button"
                 className="cancel-button"
                 onClick={() => {
-                  setShowCreatePoll(
-                    false
-                  );
+                  setShowCreatePoll(false);
                   setQuestion("");
-                  setOptions([
-                    "",
-                    "",
-                  ]);
+                  setOptions(["", ""]);
+                  setErrorMessage("");
                 }}
               >
                 Cancel
@@ -542,9 +545,7 @@ function App() {
               <button
                 type="submit"
                 className="submit-button"
-                disabled={
-                  isSubmittingPoll
-                }
+                disabled={isSubmittingPoll}
               >
                 {isSubmittingPoll
                   ? "Creating..."
@@ -625,7 +626,7 @@ function App() {
       </section>
 
       {/* ===============================
-          POLLS
+          ACTIVE POLLS
       =============================== */}
 
       <section className="poll-section">
@@ -650,8 +651,11 @@ function App() {
 
         </div>
 
+        {/* LOADING */}
+
         {loading ? (
           <div className="empty-state">
+
             <h3>
               Loading polls...
             </h3>
@@ -659,8 +663,13 @@ function App() {
             <p>
               Please wait a moment.
             </p>
+
           </div>
+
         ) : polls.length === 0 ? (
+
+          /* NO POLLS */
+
           <div className="empty-state">
 
             <h3>
@@ -673,7 +682,11 @@ function App() {
             </p>
 
           </div>
+
         ) : (
+
+          /* POLL LIST */
+
           <div className="poll-list">
 
             {polls.map(
@@ -711,6 +724,8 @@ function App() {
                     <h3>
                       {poll.question}
                     </h3>
+
+                    {/* OPTIONS */}
 
                     <div className="poll-options">
 
@@ -769,8 +784,7 @@ function App() {
                               </span>
 
                               <span className="vote-count">
-                                {voteCount}{" "}
-                                votes ·{" "}
+                                {voteCount} votes ·{" "}
                                 {percentage}%
                               </span>
 
@@ -781,14 +795,14 @@ function App() {
 
                     </div>
 
+                    {/* FOOTER */}
+
                     <div className="poll-footer">
 
                       <span>
                         Total votes:{" "}
                         <strong>
-                          {
-                            totalVotesForPoll
-                          }
+                          {totalVotesForPoll}
                         </strong>
                       </span>
 
