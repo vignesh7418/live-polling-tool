@@ -18,12 +18,12 @@ import (
 )
 
 type Poll struct {
-	ID        bson.ObjectID  `bson:"_id,omitempty" json:"id"`
-	Question  string         `bson:"question" json:"question"`
-	Options   []string       `bson:"options" json:"options"`
-	Votes     map[string]int `bson:"votes" json:"votes"`
+	ID        bson.ObjectID   `bson:"_id,omitempty" json:"id"`
+	Question  string          `bson:"question" json:"question"`
+	Options   []string        `bson:"options" json:"options"`
+	Votes     map[string]int  `bson:"votes" json:"votes"`
 	Voters    map[string]bool `bson:"voters,omitempty" json:"-"`
-	CreatedAt time.Time      `bson:"createdAt" json:"createdAt"`
+	CreatedAt time.Time       `bson:"createdAt" json:"createdAt"`
 }
 
 type CreatePollRequest struct {
@@ -41,16 +41,16 @@ var collection *mongo.Collection
 
 func main() {
 
-	// Load .env if available
+	// Load .env for local development
 	_ = godotenv.Load()
 
+	// MongoDB connection
 	mongoURI := os.Getenv("MONGODB_URI")
 
 	if mongoURI == "" {
 		log.Fatal("MONGODB_URI is not set")
 	}
 
-	// MongoDB connection
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -67,15 +67,21 @@ func main() {
 
 	collection = client.Database("livepolling").Collection("polls")
 
-	// Gin
+	// Gin router
 	r := gin.Default()
 
 	// CORS
 	r.Use(func(c *gin.Context) {
 
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		c.Writer.Header().Set(
+			"Access-Control-Allow-Methods",
+			"GET, POST, DELETE, OPTIONS",
+		)
+		c.Writer.Header().Set(
+			"Access-Control-Allow-Headers",
+			"Content-Type",
+		)
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
@@ -85,40 +91,45 @@ func main() {
 		c.Next()
 	})
 
-	// Health check
+	// Routes
 	r.GET("/", func(c *gin.Context) {
-
 		c.JSON(200, gin.H{
 			"message": "Live Polling Backend is running",
 		})
 	})
 
-	// Get all polls
 	r.GET("/polls", getPolls)
 
-	// Create poll
 	r.POST("/polls", createPoll)
 
-	// Vote
 	r.POST("/polls/:id/vote", votePoll)
 
-	// Delete poll
 	r.DELETE("/polls/:id", deletePoll)
 
-	fmt.Println("Server running on http://localhost:8080")
+	// Render PORT
+	port := os.Getenv("PORT")
 
-	if err := r.Run(":8080"); err != nil {
+	if port == "" {
+		port = "8080"
+	}
+
+	fmt.Println("Server running on port:", port)
+
+	if err := r.Run(":" + port); err != nil {
 		log.Fatal(err)
 	}
 }
 
-// =====================================
+// ===============================
 // GET ALL POLLS
-// =====================================
+// ===============================
 
 func getPolls(c *gin.Context) {
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
 	defer cancel()
 
 	cursor, err := collection.Find(ctx, bson.M{})
@@ -148,9 +159,9 @@ func getPolls(c *gin.Context) {
 	c.JSON(200, polls)
 }
 
-// =====================================
+// ===============================
 // CREATE POLL
-// =====================================
+// ===============================
 
 func createPoll(c *gin.Context) {
 
@@ -158,7 +169,7 @@ func createPoll(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{
-			"error": "Invalid request",
+			"error": "Invalid request body",
 		})
 		return
 	}
@@ -179,40 +190,40 @@ func createPoll(c *gin.Context) {
 		return
 	}
 
-	cleanOptions := make([]string, 0)
+	options := make([]string, 0, len(req.Options))
 
 	for _, option := range req.Options {
 
 		option = strings.TrimSpace(option)
 
-		if option != "" {
-			cleanOptions = append(cleanOptions, option)
+		if option == "" {
+			c.JSON(400, gin.H{
+				"error": "Options cannot be empty",
+			})
+			return
 		}
-	}
 
-	if len(cleanOptions) < 2 {
-		c.JSON(400, gin.H{
-			"error": "At least 2 valid options are required",
-		})
-		return
-	}
-
-	votes := make(map[string]int)
-
-	for _, option := range cleanOptions {
-		votes[option] = 0
+		options = append(options, option)
 	}
 
 	poll := Poll{
 		ID:        bson.NewObjectID(),
 		Question:  req.Question,
-		Options:   cleanOptions,
-		Votes:     votes,
+		Options:   options,
+		Votes:     make(map[string]int),
 		Voters:    make(map[string]bool),
 		CreatedAt: time.Now(),
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Initialize vote count
+	for _, option := range options {
+		poll.Votes[option] = 0
+	}
+
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
 	defer cancel()
 
 	_, err := collection.InsertOne(ctx, poll)
@@ -227,10 +238,10 @@ func createPoll(c *gin.Context) {
 	c.JSON(201, poll)
 }
 
-// =====================================
-// VOTE
+// ===============================
+// VOTE POLL
 // ONE IP = ONE VOTE PER POLL
-// =====================================
+// ===============================
 
 func votePoll(c *gin.Context) {
 
@@ -254,15 +265,15 @@ func votePoll(c *gin.Context) {
 		return
 	}
 
-	// =====================================
-	// GET OPTION
-	// =====================================
-
 	selectedOption := strings.TrimSpace(req.Option)
 
+	// If frontend sends optionIndex
 	if req.OptionIndex != nil {
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(
+			context.Background(),
+			10*time.Second,
+		)
 		defer cancel()
 
 		var poll Poll
@@ -308,17 +319,13 @@ func votePoll(c *gin.Context) {
 		return
 	}
 
-	// =====================================
-	// GET CLIENT IP
-	// =====================================
+	// ===============================
+	// GET USER IP
+	// ===============================
 
 	ipAddress := c.GetHeader("X-Forwarded-For")
 
 	if ipAddress != "" {
-
-		// X-Forwarded-For format:
-		// clientIP, proxyIP, proxyIP...
-
 		ipAddress = strings.TrimSpace(
 			strings.Split(ipAddress, ",")[0],
 		)
@@ -339,36 +346,37 @@ func votePoll(c *gin.Context) {
 		return
 	}
 
-	// =====================================
-	// HASH IP ADDRESS
-	// =====================================
+	// Debug log
+	fmt.Println("CLIENT IP:", ipAddress)
+
+	// ===============================
+	// HASH IP
+	// ===============================
 
 	hash := sha256.Sum256([]byte(ipAddress))
 
 	ipHash := hex.EncodeToString(hash[:])
-	
-	fmt.Println("CLIENT IP:", ipAddress)
 
-	// =====================================
-	// MONGODB FIELDS
-	// =====================================
-
+	// MongoDB fields
 	voterField := "voters." + ipHash
+
 	voteField := "votes." + selectedOption
 
-	// =====================================
+	// ===============================
 	// ATOMIC UPDATE
-	// ONE IP CAN VOTE ONLY ONCE
-	// FOR THIS PARTICULAR POLL
-	// =====================================
+	// SAME IP CANNOT VOTE AGAIN
+	// ===============================
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
 	defer cancel()
 
 	filter := bson.M{
 		"_id": objectID,
 
-		// This IP has NOT voted yet
+		// Vote only if this IP has NOT voted
 		voterField: bson.M{
 			"$ne": true,
 		},
@@ -391,19 +399,23 @@ func votePoll(c *gin.Context) {
 	)
 
 	if err != nil {
+
+		fmt.Println("VOTE UPDATE ERROR:", err)
+
 		c.JSON(500, gin.H{
 			"error": "Failed to submit vote",
 		})
+
 		return
 	}
 
-	// =====================================
+	// ===============================
 	// ALREADY VOTED
-	// =====================================
+	// ===============================
 
 	if result.MatchedCount == 0 {
 
-		// Check whether poll actually exists
+		// Check whether poll exists
 		var poll Poll
 
 		findErr := collection.FindOne(
@@ -414,30 +426,36 @@ func votePoll(c *gin.Context) {
 		).Decode(&poll)
 
 		if findErr == mongo.ErrNoDocuments {
+
 			c.JSON(404, gin.H{
 				"error": "Poll not found",
 			})
+
 			return
 		}
 
 		c.JSON(409, gin.H{
 			"error": "You have already voted in this poll",
 		})
+
 		return
 	}
 
-	// =====================================
-	// SUCCESS
-	// =====================================
+	fmt.Println(
+		"VOTE SUCCESS:",
+		ipAddress,
+		"->",
+		selectedOption,
+	)
 
 	c.JSON(200, gin.H{
 		"message": "Vote submitted successfully",
 	})
 }
 
-// =====================================
+// ===============================
 // DELETE POLL
-// =====================================
+// ===============================
 
 func deletePoll(c *gin.Context) {
 
@@ -452,7 +470,10 @@ func deletePoll(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
 	defer cancel()
 
 	result, err := collection.DeleteOne(
