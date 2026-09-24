@@ -346,6 +346,8 @@ func votePoll(c *gin.Context) {
 	hash := sha256.Sum256([]byte(ipAddress))
 
 	ipHash := hex.EncodeToString(hash[:])
+	
+	fmt.Println("CLIENT IP:", ipAddress)
 
 	// =====================================
 	// MONGODB FIELDS
